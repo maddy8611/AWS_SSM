@@ -3,12 +3,11 @@ import botocore
 import sys, json
 
 
-def ec2_list_of_instances(ec2_conn_obj):
+def ec2_list_of_instances(ec2_conn_obj, tagname):
     """
     :param ec2_conn_obj:
     :return:
     """
-    tagname = "Patch Group"
     try:
         ec2_describe_response = ec2_conn_obj.describe_instances()
     except botocore.exceptions.EndpointConnectionError as err:
@@ -46,8 +45,8 @@ def add_tags(ec2_conn_obj,tag_info):
     return response
 
 
-
 def lambda_handler(event,context):
+    tagname = "Patch Group"
     try:
         ec2_conn_obj = boto3.client('ec2')
     except botocore.exceptions.NoCredentialsError:
@@ -57,13 +56,16 @@ def lambda_handler(event,context):
             aws_access_key_id="",
             aws_secret_access_key=""
         )
-    tags_info = ec2_list_of_instances(ec2_conn_obj)
+    tags_info = ec2_list_of_instances(ec2_conn_obj,tagname)
     response = []
     for each_item in tags_info:
-        if each_item["to_be_added_tag"].items() <= each_item["existing_tags"].items():
-            response.append("Tags Exists for " + each_item["InstanceId"])
-        else:
-            response.append(add_tags(ec2_conn_obj, each_item))
+        # Change the text from "AutoScaling" to ignore the value for the tag
+        if each_item["existing_tags"].get(tagname) != "AutoScaling":
+            if each_item["to_be_added_tag"].items() <= each_item["existing_tags"].items():
+                response.append("Tags Exists for " + each_item["InstanceId"])
+            else:
+                response.append("Tags doesn't Exists for " + each_item["InstanceId"])
+                response.append(add_tags(ec2_conn_obj, each_item))
     return {
         'statusCode': 200,
         'body': json.dumps(str(response))
