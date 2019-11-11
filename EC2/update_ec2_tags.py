@@ -1,6 +1,6 @@
 import boto3
 import botocore
-import sys, json
+import sys
 
 
 def ec2_list_of_instances(ec2_conn_obj, tagname):
