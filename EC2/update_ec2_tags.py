@@ -64,7 +64,7 @@ def lambda_handler(event,context):
         #aws:autoscaling:groupName
         if each_item["existing_tags"].get("aws:autoscaling:groupName"):
             response.append(each_item["InstanceId"]+"Is AutoScaling Instance")
-            each_item["to_be_added_tag"][tagname]=each_item["existing_tags"].get(to_be_copied_tag_auto_scaling_group,"RequestorSLID Doesn't exits"
+            each_item["to_be_added_tag"][tagname]=each_item["existing_tags"].get(to_be_copied_tag_auto_scaling_group,"RequestorSLID Doesn't exits")
         if each_item["to_be_added_tag"].items() <= each_item["existing_tags"].items():
             response.append("Tags Exists for " + each_item["InstanceId"])
         else:
