@@ -47,6 +47,7 @@ def add_tags(ec2_conn_obj,tag_info):
 
 def lambda_handler(event,context):
     tagname = "Patch Group"
+    to_be_copied_tag_auto_scaling_group = "RequestorSLID"
     try:
         ec2_conn_obj = boto3.client('ec2')
     except botocore.exceptions.NoCredentialsError:
@@ -60,12 +61,15 @@ def lambda_handler(event,context):
     response = []
     for each_item in tags_info:
         # Change the text from "AutoScaling" to ignore the value for the tag
-        if each_item["existing_tags"].get(tagname) != "AutoScaling":
-            if each_item["to_be_added_tag"].items() <= each_item["existing_tags"].items():
-                response.append("Tags Exists for " + each_item["InstanceId"])
-            else:
-                response.append("Tags doesn't Exists for " + each_item["InstanceId"])
-                response.append(add_tags(ec2_conn_obj, each_item))
+        #aws:autoscaling:groupName
+        if each_item["existing_tags"].get("aws:autoscaling:groupName"):
+            response.append(each_item["InstanceId"]+"Is AutoScaling Instance")
+            each_item["to_be_added_tag"][tagname]=each_item["existing_tags"].get(to_be_copied_tag_auto_scaling_group,"RequestorSLID Doesn't exits"
+        if each_item["to_be_added_tag"].items() <= each_item["existing_tags"].items():
+            response.append("Tags Exists for " + each_item["InstanceId"])
+        else:
+            response.append("Tags doesn't Exists for " + each_item["InstanceId"])
+            response.append(add_tags(ec2_conn_obj, each_item))
     return {
         'statusCode': 200,
         'body': json.dumps(str(response))
