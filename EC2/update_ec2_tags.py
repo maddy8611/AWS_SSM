@@ -1,31 +1,51 @@
 import boto3
 import botocore
 import sys
+import pprint
 
-
-def ec2_list_of_instances(ec2_conn_obj, tagname):
+def ec2_list_of_instances(ec2_conn_obj, custom_tag_info, tag_name):
     """
-    :param ec2_conn_obj:
+    :param ec2_conn_obj: Takes connection object as an input
+    :param custom_tag_info: EX: {
+        "windows": "WINDOWS",
+        "linux": "LINUX",
+        "amzlnx": "AMAZON"
+    }
+    :param tag_name: Patch Group
     :return:
     """
     try:
         pages=ec2_conn_obj.get_paginator('describe_instances')
         all_inst_dict_tolist = []
         for page in pages.paginate():
-            for reservation in page["Reservations"]:
-                for instance in reservation["Instances"]:
+            for reservation in page.get("Reservations"):
+                for instance in reservation.get("Instances"):
                     each_inst_dict = dict()
-                    each_inst_dict["InstanceId"] = instance["InstanceId"]
-                    if instance.get("Platform") == "windows":
-                        tag_value = "WINDOWSTAGGOESHERE"
-                    else:
-                        tag_value = "LINUXTAGGOESHERE"
-                    each_inst_dict["to_be_added_tag"] = {tagname: tag_value}
+                    instance_image = instance.get("ImageId")
+                    each_inst_dict["InstanceId"] = instance.get("InstanceId")
+                    image_description = ec2_conn_obj.describe_images(
+                        Filters=[{'Name': 'image-id', 'Values': [instance_image]}])
+                    # pprint.pprint(image_description)
+                    tag_value = None
+                    if image_description.get("Images"):
+                        image_name = image_description.get("Images")[0].get("Name").lower()
+                        if "windows" in image_name:
+                            tag_value = custom_tag_info.get("windows","NoTagDefinedForWindows")
+                        elif "rhel" in image_name:
+                            tag_value = custom_tag_info.get("linux", "NoTagDefinedForLinux")
+                        elif "amzn" in image_name:
+                            tag_value = custom_tag_info.get("amzlnx", "NoTagDefinedForAmzonLinux")
+                        else:
+                            print("No OS type defined"+instance.get("InstanceId"))
+                    if tag_value:
+                        each_inst_dict["to_be_added_tag"] = {tag_name: tag_value}
+
+
+                        #each_inst_dict["to_be_added_tag"] = {tag_name: tag_value}
                     all_tags = {}
                     for each_tag in instance.get("Tags", {}):
                         all_tags[each_tag["Key"]] = each_tag["Value"]
                     each_inst_dict["existing_tags"] = all_tags
-
                     all_inst_dict_tolist.append(each_inst_dict)
         return all_inst_dict_tolist
     except botocore.exceptions.EndpointConnectionError as err:
@@ -36,7 +56,7 @@ def ec2_list_of_instances(ec2_conn_obj, tagname):
 def add_tags(ec2_conn_obj,tag_info):
     tags = []
     for each_item in tag_info["to_be_added_tag"]:
-        item1 = {"Key": each_item, "Value": tag_info["to_be_added_tag"][each_item]}
+        item1 = {"Key": each_item, "Value": tag_info["to_be_added_tag"].get(each_item)}
         tags.append(item1)
     response = ec2_conn_obj.create_tags(
         Resources=[
@@ -48,8 +68,14 @@ def add_tags(ec2_conn_obj,tag_info):
 
 
 def lambda_handler(event,context):
-    regions = ["us-east-1", "us-west-2","us-west-1"]
-    tagname = "Patch Group"
+    # Make sure to add the regions which you do operate
+    regions = ["us-east-1", "us-east-2"]
+    tag_name = "Patch Group"
+    custom_tag_info = {
+        "windows": "SRV_SATURDAY_4AM-6AM",
+        "linux": "LNX_SRV_SATURDAY_3AM-5AM",
+        "amzlnx": "AMZN_LNX_SRV_SATURDAY_3AM-5AM"
+    }
     to_be_copied_tag_auto_scaling_group = "RequestorSLID"
     final_response = {}
     for region in regions:
@@ -62,14 +88,16 @@ def lambda_handler(event,context):
                 aws_access_key_id="",
                 aws_secret_access_key=""
             )
-        tags_info = ec2_list_of_instances(ec2_conn_obj,tagname)
+        tags_info = ec2_list_of_instances(ec2_conn_obj,custom_tag_info,tag_name)
         response = []
         for each_item in tags_info:
             # Change the text from "AutoScaling" to ignore the value for the tag
             if each_item["existing_tags"].get("aws:autoscaling:groupName"):
                 response.append("AutoScaling Instance : "+each_item["InstanceId"])
-                each_item["to_be_added_tag"][tagname]=each_item["existing_tags"].get(to_be_copied_tag_auto_scaling_group,"RequestorSLID Doesn't exits")
-            if each_item["to_be_added_tag"].items() <= each_item["existing_tags"].items():
+                if not each_item.get("to_be_added_tag"):
+                    each_item["to_be_added_tag"] = {}
+                each_item["to_be_added_tag"][tag_name]=each_item["existing_tags"].get(to_be_copied_tag_auto_scaling_group,"RequestorSLID Doesn't exits")
+            if each_item.get("to_be_added_tag", {}).items() <= each_item.get("existing_tags", {}).items():
                 response.append("Tags Exists for " + each_item["InstanceId"])
             else:
                 response.append("Tags doesn't Exists for " + each_item["InstanceId"])
